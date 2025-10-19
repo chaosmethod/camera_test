@@ -1,22 +1,24 @@
-// Main application logic for the standalone Precision Lens Creation
-let currentPage = 'camera'; 
+// Global placeholder for page modules
+let pageModules = {}; 
 
-// Placeholder for the camera stream object (accessible within this scope)
-let cameraStream = null;
-
-// The main application content will be loaded here
+// The main application logic block - runs on page load
 document.addEventListener('DOMContentLoaded', function() {
+    // Ensure that all hardware listeners and the initial page load happen correctly
     initializeHardwareListeners();
-    // Force load the camera page immediately as this is a standalone app
+    // Load the camera page immediately as this is a standalone app
     loadCameraPage(document.getElementById('content')); 
 });
 
 // --- PTT and Scroll Wheel Handlers (The Core of the R1 Creation) ---
+let currentPage = 'camera'; // Set default page to camera
+let cameraStream = null;
+
 function initializeHardwareListeners() {
     
     // --- PTT Button Logic (RELIABLE SINGLE CLICK for Capture) ---
+    // Note: This logic now ONLY handles single-click for capture.
     window.addEventListener('sideClick', () => {
-        // Only trigger the capture when the camera page is active
+        // Route Single Click to Capture
         if (currentPage === 'camera' && pageModules.camera && typeof pageModules.camera.handleSingleClick === 'function') {
             pageModules.camera.handleSingleClick(); // Capture and Analyze
         }
@@ -36,17 +38,14 @@ function initializeHardwareListeners() {
     });
     
     window.addEventListener('longPressStart', () => {
-        // This is still trapped by the OS for LLM - avoid using in the app
+        // OS trap remains
         console.log('Long press started (OS will likely override for LLM).');
     });
 }
 
-// Global page modules object
-let pageModules = {}; 
-
-// Load page content (simplified to only handle the camera)
+// --- NEW CAMERA PAGE MODULE: THE PRECISION LENS ---
 function loadCameraPage(container) {
-    // Inject the final camera UI with Review Button
+    // Inject the final UI with all buttons and containers
     container.innerHTML = `
         <div class="speak-container">
             <h3 style="margin-bottom: 10px;">Precision Lens</h3>
@@ -61,7 +60,7 @@ function loadCameraPage(container) {
             <div class="speak-controls" style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px;">
                 <button id="launchBtn" style="flex: 1 1 48%;">Start Camera</button>
                 <button id="toggleFacingBtn" disabled style="flex: 1 1 48%;">Switch to User</button>
-                <button id="reviewBtn" style="flex: 1 1 100%; background: #2a2a2a;" disabled>Review Last Photo (Plain Storage)</button>
+                <button id="reviewBtn" style="flex: 1 1 100%; background: #2a2a2a;">Review Last Photo (Plain Storage)</button>
             </div>
         </div>
     `;
@@ -84,7 +83,7 @@ function loadCameraPage(container) {
             if (enable) {
                 // Flash red border for visual confirmation
                 app.style.borderColor = '#FF0000';
-                // Attempt to play a simple sound (will only work if allowed by WebView)
+                // Attempt to play a simple sound (using an external resource for simplicity)
                 new Audio('https://s3.amazonaws.com/clyp.it/wavs/clypit_shutter.wav').play().catch(e => console.log('Audio playback failed', e));
             } else {
                 app.style.borderColor = '#00ff00'; // Revert to theme color
@@ -94,7 +93,7 @@ function loadCameraPage(container) {
         // --- Camera Controls ---
         launchCamera: function(newFacingMode = this.currentFacingMode) {
             if (this.cameraStream) {
-                this.stopCamera(); // Stop to toggle off
+                this.stopCamera(); 
                 return;
             }
             
@@ -118,7 +117,7 @@ function loadCameraPage(container) {
                 this.updateStatus(`Facing: ${this.currentFacingMode} / Zoom: ${this.zoomLevel.toFixed(1)}x`);
                 this.applyZoom();
             }).catch(e => {
-                this.updateStatus(`Camera Error: ${e.name}. Access denied or not available.`);
+                this.updateStatus(`Camera Error: ${e.name}. Tap Start to try again.`);
                 console.error('Camera access error:', e);
             });
         },
@@ -136,6 +135,7 @@ function loadCameraPage(container) {
 
         toggleFacingMode: function() {
             if (!this.cameraStream) return;
+            // Stop and restart camera with new mode
             const newMode = this.currentFacingMode === 'environment' ? 'user' : 'environment';
             this.launchCamera(newMode); 
         },
@@ -164,7 +164,7 @@ function loadCameraPage(container) {
             this.updateStatus(`Facing: ${this.currentFacingMode} / Zoom: ${this.zoomLevel.toFixed(1)}x`);
         },
 
-        // --- Capture, Store, and Analyze ---
+        // --- PTT Single-Click: Capture, Store, and Analyze ---
         handleSingleClick: function() {
             if (!this.cameraStream) {
                 this.updateStatus('Launch camera first!');
@@ -179,9 +179,11 @@ function loadCameraPage(container) {
             setTimeout(() => this.toggleCaptureFeedback(false), 200);
 
             const videoEl = document.getElementById('cameraPreview');
+            if (!this.cameraStream || !videoEl) return this.updateStatus('Camera not ready.');
+            
             const canvas = document.createElement('canvas');
-            canvas.width = 240; 
-            canvas.height = 282; 
+            canvas.width = 240;
+            canvas.height = 282;
             const ctx = canvas.getContext('2d');
 
             // Calculate source dimensions for the current zoom level (Digital Zoom Capture)
@@ -191,13 +193,14 @@ function loadCameraPage(container) {
             const srcY = (videoEl.videoHeight - srcHeight) / 2;
 
             ctx.drawImage(videoEl, srcX, srcY, srcWidth, srcHeight, 0, 0, canvas.width, canvas.height);
-            const imageBase64 = canvas.toDataURL('image/jpeg');
-            this.updateStatus('Captured. Sending to LLM...');
             
-            // 2. Store the image (Plain Storage)
+            const imageBase64 = canvas.toDataURL('image/jpeg');
+            this.updateStatus('Captured. Storing and Sending to LLM...');
+
+            // 2. Store the image using PLAIN storage (only)
             if (typeof window.creationStorage !== 'undefined') {
                  try {
-                    await window.creationStorage.plain.setItem('last_capture', imageBase64); 
+                    await window.creationStorage.plain.setItem('last_capture', imageBase64);
                     console.log('Image stored in plain storage.');
                  } catch (e) {
                      console.error('Plain Storage error:', e);
@@ -232,9 +235,8 @@ function loadCameraPage(container) {
             const reviewImg = document.getElementById('reviewImage');
             
             if (imageBase64) {
-                // Stop camera stream if active to show image clearly
-                this.stopCamera(); 
-                
+                this.stopCamera(); // Stop camera stream if active
+
                 reviewImg.src = imageBase64;
                 reviewImg.style.display = 'block'; // Show review image
                 videoEl.style.display = 'none'; // Hide video element
@@ -244,8 +246,8 @@ function loadCameraPage(container) {
             }
         },
 
+
         handleMessage: function(data) {
-            // ... (LLM handling remains the same) ...
             console.log('Camera page handling LLM response:', data);
             let status = 'Analysis Complete.';
             if (data.data) {
@@ -260,15 +262,10 @@ function loadCameraPage(container) {
         }
     };
     
-    // Store module reference
+    // Store module reference and bind handlers for routing
     pageModules.camera = cameraModule;
-    
-    // Bind handlers for app.js routing
     pageModules.camera.handleScrollUp = cameraModule.handleScrollUp.bind(cameraModule);
     pageModules.camera.handleScrollDown = cameraModule.handleScrollDown.bind(cameraModule);
     
-    // --- UI Button Event Listeners ---
+    // --- Hook up UI Button Event Listeners ---
     document.getElementById('launchBtn').addEventListener('click', () => cameraModule.launchCamera());
-    document.getElementById('toggleFacingBtn').addEventListener('click', () => cameraModule.toggleFacingMode());
-    document.getElementById('reviewBtn').addEventListener('click', () => cameraModule.reviewLastPhoto());
-}
