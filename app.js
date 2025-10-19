@@ -1,7 +1,66 @@
+// Main application logic for the standalone Precision Lens Creation
+let currentPage = 'camera'; // Set default page to camera
+
 // Placeholder for the camera stream object (accessible within this scope)
 let cameraStream = null;
 
+// The main application content will be loaded here
+document.addEventListener('DOMContentLoaded', function() {
+    initializeHardwareListeners();
+    // Force load the camera page immediately as this is a standalone app
+    loadCameraPage(document.getElementById('content')); 
+});
+
+// --- PTT and Scroll Wheel Handlers (The Core of the R1 Creation) ---
+function initializeHardwareListeners() {
+    
+    // --- PTT Button Logic (Double-Click Reclaim for Launch/Stop) ---
+    let lastPTTTime = 0;
+    const DBL_CLICK_DELAY = 350; // ms 
+
+    window.addEventListener('sideClick', () => {
+        const now = Date.now();
+        const timeDelta = now - lastPTTTime;
+
+        if (timeDelta < DBL_CLICK_DELAY) {
+            // **Double Click Detected: Use for Camera Launch/Stop**
+            if (currentPage === 'camera' && pageModules.camera) {
+                pageModules.camera.launchCamera(); // This function now toggles start/stop
+            }
+            lastPTTTime = 0; // Reset to prevent triple-clicks
+        } else {
+            // **Single Click Detected: Route to Capture**
+            if (currentPage === 'camera' && pageModules.camera && typeof pageModules.camera.handleSingleClick === 'function') {
+                pageModules.camera.handleSingleClick(); // Capture and Analyze
+            }
+            lastPTTTime = now;
+        }
+    });
+
+    // --- Scroll Wheel Listeners (Digital Zoom) ---
+    window.addEventListener('scrollUp', () => {
+        if (currentPage === 'camera' && pageModules.camera) {
+            pageModules.camera.handleScrollUp(); 
+        }
+    });
+
+    window.addEventListener('scrollDown', () => {
+        if (currentPage === 'camera' && pageModules.camera) {
+            pageModules.camera.handleScrollDown(); 
+        }
+    });
+    
+    window.addEventListener('longPressStart', () => {
+        console.log('Long press started (OS will likely override for LLM).');
+    });
+}
+
+// Global page modules object (used only for the camera now)
+let pageModules = {}; 
+
+// Load page content (simplified to only handle the camera)
 function loadCameraPage(container) {
+    // Inject the specific camera UI
     container.innerHTML = `
         <div class="speak-container">
             <h3 style="margin-bottom: 10px;">Precision Lens</h3>
@@ -11,7 +70,7 @@ function loadCameraPage(container) {
                 <div id="cameraStatus" class="speak-status" style="position: absolute; bottom: 0; width: 100%; opacity: 0.9;">Facing: Environment</div>
             </div>
             <div class="speak-controls" style="margin-top: 10px; display: flex; gap: 8px;">
-                <button id="launchBtn" style="flex: 1;">Status: Not Active</button>
+                <button id="launchBtn" style="flex: 1;" disabled>Status: Not Active</button>
                 <button id="toggleFacingBtn" disabled style="flex: 1;">Switch to User</button>
             </div>
         </div>
@@ -19,7 +78,7 @@ function loadCameraPage(container) {
 
     const cameraModule = {
         cameraStream: null,
-        currentFacingMode: 'environment', // Start with Rabbit Eye external-facing
+        currentFacingMode: 'environment', 
         zoomLevel: 1.0,
         MAX_ZOOM: 3.0,
         MIN_ZOOM: 1.0,
@@ -27,8 +86,11 @@ function loadCameraPage(container) {
 
         // --- Core Camera & Control Functions ---
         launchCamera: function(newFacingMode = this.currentFacingMode) {
-            this.stopCamera(); // Stop the current stream first
-
+            if (this.cameraStream) {
+                this.stopCamera();
+                return;
+            }
+            
             navigator.mediaDevices.getUserMedia({ 
                 video: {
                     facingMode: newFacingMode 
@@ -52,7 +114,7 @@ function loadCameraPage(container) {
         
         stopCamera: function() {
             if (this.cameraStream) {
-                this.cameraStream.getTracks().forEach(track => track.stop()); // Stop all tracks
+                this.cameraStream.getTracks().forEach(track => track.stop()); 
                 this.cameraStream = null;
                 document.getElementById('launchBtn').textContent = 'Status: Not Active';
                 document.getElementById('toggleFacingBtn').disabled = true;
@@ -62,9 +124,9 @@ function loadCameraPage(container) {
 
         toggleFacingMode: function() {
             if (!this.cameraStream) return;
-            // Toggle between environment (external) and user (selfie)
+            // Stop and restart camera with new mode
             const newMode = this.currentFacingMode === 'environment' ? 'user' : 'environment';
-            this.launchCamera(newMode);
+            this.launchCamera(newMode); 
         },
         
         // --- Scroll Wheel (Digital Zoom) Handlers ---
@@ -85,6 +147,7 @@ function loadCameraPage(container) {
             if (!videoEl) return;
             
             const scale = this.zoomLevel;
+            // Use CSS transform for performance-friendly digital zoom
             videoEl.style.transform = `scale(${scale})`;
             videoEl.style.transformOrigin = 'center center';
             
@@ -103,10 +166,11 @@ function loadCameraPage(container) {
         
         captureStoreAndAnalyze: async function() {
             const videoEl = document.getElementById('cameraPreview');
-            // ... [Capture setup remains the same, calculating zoom/crop] ...
+            if (!this.cameraStream || !videoEl) return this.updateStatus('Camera not ready.');
+            
             const canvas = document.createElement('canvas');
-            canvas.width = 240; // R1 viewport width
-            canvas.height = 282; // R1 viewport height
+            canvas.width = 240;
+            canvas.height = 282;
             const ctx = canvas.getContext('2d');
 
             // Calculate source dimensions for the current zoom level (Digital Zoom Capture)
@@ -115,7 +179,6 @@ function loadCameraPage(container) {
             const srcX = (videoEl.videoWidth - srcWidth) / 2;
             const srcY = (videoEl.videoHeight - srcHeight) / 2;
 
-            // Draw the zoomed/cropped frame to the canvas
             ctx.drawImage(videoEl, srcX, srcY, srcWidth, srcHeight, 0, 0, canvas.width, canvas.height);
             
             const imageBase64 = canvas.toDataURL('image/jpeg');
@@ -124,7 +187,7 @@ function loadCameraPage(container) {
             // --- 1. Store the image using PLAIN storage (only) ---
             if (typeof window.creationStorage !== 'undefined') {
                  try {
-                    await window.creationStorage.plain.setItem('last_capture', imageBase64); // Uses plain storage
+                    await window.creationStorage.plain.setItem('last_capture', imageBase64);
                     console.log('Image stored in plain storage.');
                  } catch (e) {
                      console.error('Plain Storage error:', e);
@@ -176,11 +239,8 @@ function loadCameraPage(container) {
     // Store module reference
     pageModules.camera = cameraModule;
     
-    // Bind hardware handlers for app.js routing
-    pageModules.camera.handleScrollUp = cameraModule.handleScrollUp.bind(cameraModule);
-    pageModules.camera.handleScrollDown = cameraModule.handleScrollDown.bind(cameraModule);
-    
     // --- UI Button Event Listeners ---
+    // Note: The hardware PTT double-click is the primary trigger for launchCamera
     document.getElementById('launchBtn').addEventListener('click', () => cameraModule.launchCamera());
     document.getElementById('toggleFacingBtn').addEventListener('click', () => cameraModule.toggleFacingMode());
 }
