@@ -1,5 +1,5 @@
 // Main application logic for the standalone Precision Lens Creation
-let currentPage = 'camera'; // Set default page to camera
+let currentPage = 'camera'; 
 
 // Placeholder for the camera stream object (accessible within this scope)
 let cameraStream = null;
@@ -14,26 +14,11 @@ document.addEventListener('DOMContentLoaded', function() {
 // --- PTT and Scroll Wheel Handlers (The Core of the R1 Creation) ---
 function initializeHardwareListeners() {
     
-    // --- PTT Button Logic (Double-Click Reclaim for Launch/Stop) ---
-    let lastPTTTime = 0;
-    const DBL_CLICK_DELAY = 350; // ms 
-
+    // --- PTT Button Logic (RELIABLE SINGLE CLICK for Capture) ---
     window.addEventListener('sideClick', () => {
-        const now = Date.now();
-        const timeDelta = now - lastPTTTime;
-
-        if (timeDelta < DBL_CLICK_DELAY) {
-            // **Double Click Detected: Use for Camera Launch/Stop**
-            if (currentPage === 'camera' && pageModules.camera) {
-                pageModules.camera.launchCamera(); // This function now toggles start/stop
-            }
-            lastPTTTime = 0; // Reset to prevent triple-clicks
-        } else {
-            // **Single Click Detected: Route to Capture**
-            if (currentPage === 'camera' && pageModules.camera && typeof pageModules.camera.handleSingleClick === 'function') {
-                pageModules.camera.handleSingleClick(); // Capture and Analyze
-            }
-            lastPTTTime = now;
+        // Only trigger the capture when the camera page is active
+        if (currentPage === 'camera' && pageModules.camera && typeof pageModules.camera.handleSingleClick === 'function') {
+            pageModules.camera.handleSingleClick(); // Capture and Analyze
         }
     });
 
@@ -51,27 +36,32 @@ function initializeHardwareListeners() {
     });
     
     window.addEventListener('longPressStart', () => {
+        // This is still trapped by the OS for LLM - avoid using in the app
         console.log('Long press started (OS will likely override for LLM).');
     });
 }
 
-// Global page modules object (used only for the camera now)
+// Global page modules object
 let pageModules = {}; 
 
 // Load page content (simplified to only handle the camera)
 function loadCameraPage(container) {
-    // Inject the specific camera UI
+    // Inject the final camera UI with Review Button
     container.innerHTML = `
         <div class="speak-container">
             <h3 style="margin-bottom: 10px;">Precision Lens</h3>
-            <div style="font-size: 11px; color: #888; margin-bottom: 5px;">Double PTT to Launch/Stop. Scroll to Zoom. Single PTT to Capture.</div>
+            <div style="font-size: 11px; color: #888; margin-bottom: 5px;">PTT Button: Capture. Scroll Wheel: Zoom.</div>
+            
             <div style="position: relative; width: 220px; height: 180px; overflow: hidden; margin: 0 auto; border: 1px solid #00ff00; background: #333;">
                 <video id="cameraPreview" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
-                <div id="cameraStatus" class="speak-status" style="position: absolute; bottom: 0; width: 100%; opacity: 0.9;">Facing: Environment</div>
+                <img id="reviewImage" style="display: none; width: 100%; height: 100%; object-fit: contain; position: absolute; top: 0; left: 0;">
+                <div id="cameraStatus" class="speak-status" style="position: absolute; bottom: 0; width: 100%; opacity: 0.9;">Not Active</div>
             </div>
-            <div class="speak-controls" style="margin-top: 10px; display: flex; gap: 8px;">
-                <button id="launchBtn" style="flex: 1;" disabled>Status: Not Active</button>
-                <button id="toggleFacingBtn" disabled style="flex: 1;">Switch to User</button>
+
+            <div class="speak-controls" style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px;">
+                <button id="launchBtn" style="flex: 1 1 48%;">Start Camera</button>
+                <button id="toggleFacingBtn" disabled style="flex: 1 1 48%;">Switch to User</button>
+                <button id="reviewBtn" style="flex: 1 1 100%; background: #2a2a2a;" disabled>Review Last Photo (Plain Storage)</button>
             </div>
         </div>
     `;
@@ -84,10 +74,27 @@ function loadCameraPage(container) {
         MIN_ZOOM: 1.0,
         ZOOM_STEP: 0.2,
 
-        // --- Core Camera & Control Functions ---
+        // --- Utility ---
+        updateStatus: function(status) {
+            document.getElementById('cameraStatus').textContent = status;
+        },
+        
+        toggleCaptureFeedback: function(enable) {
+            const app = document.getElementById('app');
+            if (enable) {
+                // Flash red border for visual confirmation
+                app.style.borderColor = '#FF0000';
+                // Attempt to play a simple sound (will only work if allowed by WebView)
+                new Audio('https://s3.amazonaws.com/clyp.it/wavs/clypit_shutter.wav').play().catch(e => console.log('Audio playback failed', e));
+            } else {
+                app.style.borderColor = '#00ff00'; // Revert to theme color
+            }
+        },
+
+        // --- Camera Controls ---
         launchCamera: function(newFacingMode = this.currentFacingMode) {
             if (this.cameraStream) {
-                this.stopCamera();
+                this.stopCamera(); // Stop to toggle off
                 return;
             }
             
@@ -97,39 +104,43 @@ function loadCameraPage(container) {
                 } 
             }).then(stream => {
                 const videoEl = document.getElementById('cameraPreview');
+                const reviewImg = document.getElementById('reviewImage');
+                
                 this.cameraStream = stream;
                 this.currentFacingMode = newFacingMode;
                 videoEl.srcObject = stream;
-                
-                document.getElementById('launchBtn').textContent = `Camera Active (${this.currentFacingMode})`;
-                document.getElementById('toggleFacingBtn').textContent = `Switch to ${this.currentFacingMode === 'environment' ? 'User' : 'Environment'}`;
+                videoEl.style.display = 'block'; // Show video
+                reviewImg.style.display = 'none'; // Hide review image
+
+                document.getElementById('launchBtn').textContent = 'Stop Camera';
                 document.getElementById('toggleFacingBtn').disabled = false;
-                this.updateStatus(`Facing: ${this.currentFacingMode}`);
+                document.getElementById('reviewBtn').disabled = false;
+                this.updateStatus(`Facing: ${this.currentFacingMode} / Zoom: ${this.zoomLevel.toFixed(1)}x`);
                 this.applyZoom();
             }).catch(e => {
-                this.updateStatus(`Camera Error: ${e.name}`);
+                this.updateStatus(`Camera Error: ${e.name}. Access denied or not available.`);
                 console.error('Camera access error:', e);
             });
         },
         
         stopCamera: function() {
             if (this.cameraStream) {
-                this.cameraStream.getTracks().forEach(track => track.stop()); 
+                this.cameraStream.getTracks().forEach(track => track.stop());
                 this.cameraStream = null;
-                document.getElementById('launchBtn').textContent = 'Status: Not Active';
+                document.getElementById('cameraPreview').style.display = 'none';
+                document.getElementById('launchBtn').textContent = 'Start Camera';
                 document.getElementById('toggleFacingBtn').disabled = true;
-                this.updateStatus(`Facing: ${this.currentFacingMode}`);
+                this.updateStatus('Camera stopped.');
             }
         },
 
         toggleFacingMode: function() {
             if (!this.cameraStream) return;
-            // Stop and restart camera with new mode
             const newMode = this.currentFacingMode === 'environment' ? 'user' : 'environment';
             this.launchCamera(newMode); 
         },
         
-        // --- Scroll Wheel (Digital Zoom) Handlers ---
+        // --- Digital Zoom (Scroll Wheel) Handlers ---
         handleScrollUp: function() {
             if (!this.cameraStream) return;
             this.zoomLevel = Math.min(this.MAX_ZOOM, this.zoomLevel + this.ZOOM_STEP);
@@ -147,15 +158,13 @@ function loadCameraPage(container) {
             if (!videoEl) return;
             
             const scale = this.zoomLevel;
-            // Use CSS transform for performance-friendly digital zoom
             videoEl.style.transform = `scale(${scale})`;
             videoEl.style.transformOrigin = 'center center';
             
-            document.getElementById('launchBtn').textContent = `Active (Zoom: ${this.zoomLevel.toFixed(1)}x)`;
-            this.updateStatus(`Zoom: ${this.zoomLevel.toFixed(1)}x / Facing: ${this.currentFacingMode}`);
+            this.updateStatus(`Facing: ${this.currentFacingMode} / Zoom: ${this.zoomLevel.toFixed(1)}x`);
         },
 
-        // --- PTT Single-Click: Capture, Store, and Analyze ---
+        // --- Capture, Store, and Analyze ---
         handleSingleClick: function() {
             if (!this.cameraStream) {
                 this.updateStatus('Launch camera first!');
@@ -165,12 +174,14 @@ function loadCameraPage(container) {
         },
         
         captureStoreAndAnalyze: async function() {
+            // 1. Visual/Audio Feedback
+            this.toggleCaptureFeedback(true);
+            setTimeout(() => this.toggleCaptureFeedback(false), 200);
+
             const videoEl = document.getElementById('cameraPreview');
-            if (!this.cameraStream || !videoEl) return this.updateStatus('Camera not ready.');
-            
             const canvas = document.createElement('canvas');
-            canvas.width = 240;
-            canvas.height = 282;
+            canvas.width = 240; 
+            canvas.height = 282; 
             const ctx = canvas.getContext('2d');
 
             // Calculate source dimensions for the current zoom level (Digital Zoom Capture)
@@ -180,26 +191,24 @@ function loadCameraPage(container) {
             const srcY = (videoEl.videoHeight - srcHeight) / 2;
 
             ctx.drawImage(videoEl, srcX, srcY, srcWidth, srcHeight, 0, 0, canvas.width, canvas.height);
-            
             const imageBase64 = canvas.toDataURL('image/jpeg');
-            this.updateStatus('Captured. Storing and Sending to LLM...');
-
-            // --- 1. Store the image using PLAIN storage (only) ---
+            this.updateStatus('Captured. Sending to LLM...');
+            
+            // 2. Store the image (Plain Storage)
             if (typeof window.creationStorage !== 'undefined') {
                  try {
-                    await window.creationStorage.plain.setItem('last_capture', imageBase64);
+                    await window.creationStorage.plain.setItem('last_capture', imageBase64); 
                     console.log('Image stored in plain storage.');
                  } catch (e) {
                      console.error('Plain Storage error:', e);
                  }
             }
             
-            // --- 2. Send to LLM for structured analysis ---
+            // 3. Send to LLM
             this.sendToLLM(imageBase64.split(',')[1]);
         },
 
         sendToLLM: function(base64Data) {
-            // Enforcing Structured LLM Output for small screen display
             const message = "Analyze this image and provide a concise description, a potential use, and respond ONLY with valid JSON in this format: {\"title\":\"...\",\"use\":\"...\",\"description\":\"...\"}";
             
             if (typeof PluginMessageHandler !== 'undefined') {
@@ -214,7 +223,29 @@ function loadCameraPage(container) {
             }
         },
 
+        // --- Review Captured Photo ---
+        reviewLastPhoto: async function() {
+            if (typeof window.creationStorage === 'undefined') return this.updateStatus('Storage API not available.');
+            
+            const imageBase64 = await window.creationStorage.plain.getItem('last_capture');
+            const videoEl = document.getElementById('cameraPreview');
+            const reviewImg = document.getElementById('reviewImage');
+            
+            if (imageBase64) {
+                // Stop camera stream if active to show image clearly
+                this.stopCamera(); 
+                
+                reviewImg.src = imageBase64;
+                reviewImg.style.display = 'block'; // Show review image
+                videoEl.style.display = 'none'; // Hide video element
+                this.updateStatus('Reviewing Last Captured Photo.');
+            } else {
+                this.updateStatus('No photo found in storage.');
+            }
+        },
+
         handleMessage: function(data) {
+            // ... (LLM handling remains the same) ...
             console.log('Camera page handling LLM response:', data);
             let status = 'Analysis Complete.';
             if (data.data) {
@@ -226,21 +257,18 @@ function loadCameraPage(container) {
                 }
             }
             this.updateStatus(status);
-        },
-        
-        updateStatus: function(status) {
-            const statusDiv = document.getElementById('cameraStatus');
-            if (statusDiv) {
-                statusDiv.textContent = status;
-            }
         }
     };
     
     // Store module reference
     pageModules.camera = cameraModule;
     
+    // Bind handlers for app.js routing
+    pageModules.camera.handleScrollUp = cameraModule.handleScrollUp.bind(cameraModule);
+    pageModules.camera.handleScrollDown = cameraModule.handleScrollDown.bind(cameraModule);
+    
     // --- UI Button Event Listeners ---
-    // Note: The hardware PTT double-click is the primary trigger for launchCamera
     document.getElementById('launchBtn').addEventListener('click', () => cameraModule.launchCamera());
     document.getElementById('toggleFacingBtn').addEventListener('click', () => cameraModule.toggleFacingMode());
+    document.getElementById('reviewBtn').addEventListener('click', () => cameraModule.reviewLastPhoto());
 }
