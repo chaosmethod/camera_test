@@ -1,22 +1,26 @@
+// Main application logic for the standalone Precision Lens Creation
+let currentPage = 'camera'; 
+
+// Placeholder for the camera stream object (accessible within this scope)
+let cameraStream = null;
+
 // Global placeholder for page modules
 let pageModules = {}; 
 
 // The main application logic block - runs on page load
 document.addEventListener('DOMContentLoaded', function() {
-    // Ensure that all hardware listeners and the initial page load happen correctly
+    // 1. Initialize all hardware listeners (PTT single click, Scroll Wheel)
     initializeHardwareListeners();
-    // Load the camera page immediately as this is a standalone app
+    
+    // 2. Load the camera page UI
     loadCameraPage(document.getElementById('content')); 
 });
 
 // --- PTT and Scroll Wheel Handlers (The Core of the R1 Creation) ---
-let currentPage = 'camera'; // Set default page to camera
-let cameraStream = null;
-
 function initializeHardwareListeners() {
     
     // --- PTT Button Logic (RELIABLE SINGLE CLICK for Capture) ---
-    // Note: This logic now ONLY handles single-click for capture.
+    // This is the only PTT event we rely on within the app.
     window.addEventListener('sideClick', () => {
         // Route Single Click to Capture
         if (currentPage === 'camera' && pageModules.camera && typeof pageModules.camera.handleSingleClick === 'function') {
@@ -43,7 +47,7 @@ function initializeHardwareListeners() {
     });
 }
 
-// --- NEW CAMERA PAGE MODULE: THE PRECISION LENS ---
+// --- CAMERA PAGE MODULE: THE PRECISION LENS (Patched for UI and Reliability) ---
 function loadCameraPage(container) {
     // Inject the final UI with all buttons and containers
     container.innerHTML = `
@@ -58,7 +62,7 @@ function loadCameraPage(container) {
             </div>
 
             <div class="speak-controls" style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px;">
-                <button id="launchBtn" style="flex: 1 1 48%;">Start Camera</button>
+                <button id="launchBtn" style="flex: 1 1 48%;">Start Camera</button> 
                 <button id="toggleFacingBtn" disabled style="flex: 1 1 48%;">Switch to User</button>
                 <button id="reviewBtn" style="flex: 1 1 100%; background: #2a2a2a;">Review Last Photo (Plain Storage)</button>
             </div>
@@ -83,7 +87,7 @@ function loadCameraPage(container) {
             if (enable) {
                 // Flash red border for visual confirmation
                 app.style.borderColor = '#FF0000';
-                // Attempt to play a simple sound (using an external resource for simplicity)
+                // Attempt to play a simple sound 
                 new Audio('https://s3.amazonaws.com/clyp.it/wavs/clypit_shutter.wav').play().catch(e => console.log('Audio playback failed', e));
             } else {
                 app.style.borderColor = '#00ff00'; // Revert to theme color
@@ -158,6 +162,7 @@ function loadCameraPage(container) {
             if (!videoEl) return;
             
             const scale = this.zoomLevel;
+            // Use CSS transform for performance-friendly digital zoom 
             videoEl.style.transform = `scale(${scale})`;
             videoEl.style.transformOrigin = 'center center';
             
@@ -174,7 +179,7 @@ function loadCameraPage(container) {
         },
         
         captureStoreAndAnalyze: async function() {
-            // 1. Visual/Audio Feedback
+            // 1. Visual/Audio Feedback for Capture
             this.toggleCaptureFeedback(true);
             setTimeout(() => this.toggleCaptureFeedback(false), 200);
 
@@ -269,3 +274,6 @@ function loadCameraPage(container) {
     
     // --- Hook up UI Button Event Listeners ---
     document.getElementById('launchBtn').addEventListener('click', () => cameraModule.launchCamera());
+    document.getElementById('toggleFacingBtn').addEventListener('click', () => cameraModule.toggleFacingMode());
+    document.getElementById('reviewBtn').addEventListener('click', () => cameraModule.reviewLastPhoto());
+}
