@@ -1,0 +1,196 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    width: 240px;
+    height: 282px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    font-size: 12px;
+    background: #0a0a0a;
+    color: #fff;
+    overflow: hidden;
+    position: relative;
+}
+
+#app {
+    width: 100%;
+    height: 100%;
+    border: 5px solid #00ff00; /* Initial border color (can be changed by data page) */
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    transition: border-color 0.3s ease;
+}
+
+header {
+    background: #1a1a1a;
+    padding: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 40px;
+    border-bottom: 1px solid #333;
+}
+
+header h1 {
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.menu-button {
+    width: 32px;
+    height: 32px;
+    background: #333;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 18px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+/* --- Menu and Navigation Styles (Existing) --- */
+
+.menu-nav {
+    position: absolute;
+    top: 0;
+    right: -200px;
+    width: 200px;
+    height: 100%;
+    background: #1a1a1a;
+    border-left: 2px solid #333;
+    z-index: 1000;
+    transition: right 0.3s ease;
+    padding: 20px;
+}
+
+.menu-nav.open {
+    right: 0;
+}
+
+.close-menu {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 30px;
+    height: 30px;
+    background: transparent;
+    color: #fff;
+    border: 1px solid #333;
+    border-radius: 4px;
+    font-size: 20px;
+    cursor: pointer;
+}
+
+.menu-nav ul {
+    list-style: none;
+    margin-top: 50px;
+}
+
+.menu-nav li {
+    margin-bottom: 15px;
+}
+
+.menu-nav a {
+    color: #fff;
+    text-decoration: none;
+    font-size: 14px;
+    display: block;
+    padding: 10px;
+    background: #2a2a2a;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.menu-nav a:hover,
+.menu-nav a.active {
+    background: #00ff00;
+    color: #000;
+}
+
+main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    background: #0a0a0a;
+}
+
+.welcome {
+    text-align: center;
+    padding: 20px;
+}
+
+.welcome h2 {
+    font-size: 18px;
+    margin-bottom: 10px;
+}
+
+/* --- Shared Component Styles (Hardware, Data, Speak, Camera) --- */
+
+/* Generic container for page content */
+.speak-container, .hardware-container, .data-container {
+    padding: 10px;
+    height: 100%; /* Important for internal layout */
+}
+
+/* Shared status/log area */
+.speak-status {
+    padding: 8px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 4px;
+    font-size: 11px;
+    text-align: center;
+}
+
+/* Shared button controls container */
+.speak-controls {
+    display: flex;
+    gap: 8px;
+    flex-direction: row; /* Overridden by Speak page */
+}
+
+button {
+    padding: 8px 12px;
+    background: #00ff00;
+    color: #000;
+    border: none;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+button:hover {
+    background: #00cc00;
+}
+
+button:disabled {
+    background: #555;
+    color: #999;
+    cursor: not-allowed;
+}
+
+/* --- Hardware Page Specifics --- */
+.tab-navigation { /* ... existing tab styles ... */ }
+.tab-button { /* ... existing tab styles ... */ }
+.tab-content { /* ... existing tab styles ... */ }
+.accel-value { /* ... existing accel styles ... */ }
+
+/* --- Data Page Specifics --- */
+.data-buttons { /* ... existing data button styles ... */ }
+.data-button.toggle.red { /* ... existing data button styles ... */ }
+.chat-window { /* ... existing chat window styles ... */ }
+.chat-message.fact { /* ... existing chat styles ... */ }
+
+/* --- Speak Page Specifics --- */
+.speak-input { /* ... existing speak input styles ... */ }
+.speak-toggle { /* ... existing speak toggle styles ... */ }
+
+/* --- Precision Lens (Camera) Specifics --- */
+/* The camera view uses the .speak-container and inline styles for its unique layout. 
+   No dedicated new classes needed for this simple component. */
